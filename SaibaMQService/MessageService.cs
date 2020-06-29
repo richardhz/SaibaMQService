@@ -14,6 +14,7 @@ namespace SaibaMQService
         private readonly string hostName;
         private readonly bool isDurable;
         private readonly bool canAutoDelete;
+        private readonly bool isExclusive;
 
         private IModel channel;
         private EventingBasicConsumer consumer;
@@ -21,15 +22,16 @@ namespace SaibaMQService
         private bool isListening;
 
 
-        public MessageService(string exchangeName = "SbrDefault", string hostName = "", bool isDurable = false, bool isExclusive = false, bool canAutoDelete = false)
+        public MessageService(string exchangeName = "sbr.Default", string hostName = "", bool isDurable = true, bool isExclusive = false, bool canAutoDelete = false)
         {
             this.exchangeName = exchangeName;
             this.hostName = hostName;
             this.isDurable = isDurable;
             this.canAutoDelete = canAutoDelete;
-        }
+            this.isExclusive = isExclusive;
+    }
 
-        public void InitTopicConsumer<T>(string routingKey, Action<T> process) where T : class
+        public void InitTopicConsumer<T>(string queueName,string routingKey, Action<T> process) where T : class
         {
             bool returnMessageTransport = routingKey.Contains("*");
 
@@ -42,7 +44,8 @@ namespace SaibaMQService
                                     autoDelete: canAutoDelete,
                                     arguments: null);  //We need to allow arguments
 
-            consumerQueueName = channel.QueueDeclare().QueueName;
+            consumerQueueName = queueName;
+            channel.QueueDeclare(consumerQueueName, durable: isDurable, exclusive: isExclusive);
 
             channel.QueueBind(queue: consumerQueueName,
                                 exchange: exchangeName,
@@ -69,6 +72,29 @@ namespace SaibaMQService
             };
         }
 
+        public void TopicAddQueue(string queueName, string routingKey)
+        {
+            using (var connection = GetConnection(hostName))
+            using (var channel = connection.CreateModel())
+            {
+
+                channel.ExchangeDeclare(exchange: exchangeName,
+                                        type: "topic",
+                                        durable: isDurable,
+                                        autoDelete: canAutoDelete,
+                                        arguments: null);
+
+
+                channel.QueueDeclare(queue: queueName, durable: isDurable, exclusive: isExclusive);
+
+                channel.QueueBind(queue: queueName,
+                                    exchange: exchangeName,
+                                    routingKey: routingKey);
+
+            }
+        }
+
+
         public void TopicListen() //We need to allow manual acknowledge.
         {
             if (channel != null && !isListening)
@@ -80,7 +106,7 @@ namespace SaibaMQService
             }
         }
 
-        public void TopicSend<T>(T data, string routingKey, string reference = "none" ) where T : class  //We need to allow arguments
+        public void TopicSend<T>(T data,string queueName,string routingKey, string reference = "none" ) where T : class  //We need to allow arguments
         {
             using var connection = GetConnection(hostName);
             using var channel = connection.CreateModel();
@@ -90,7 +116,11 @@ namespace SaibaMQService
                                     autoDelete: canAutoDelete,
                                     arguments: null);
 
+            channel.QueueDeclare(queue: queueName, durable: isDurable, exclusive: isExclusive);
 
+            channel.QueueBind(queue: queueName,
+                                    exchange: exchangeName,
+                                    routingKey: routingKey);
 
             var message = GenerateMessageTransport(data, reference);
 

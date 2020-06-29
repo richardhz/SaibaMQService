@@ -6,6 +6,7 @@
     <Authors>Richard Hernandez</Authors>
     <Company>Saiba Data Systems Ltd.</Company>
     <Description>A wrapper for RabbitMQ.Client</Description>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
